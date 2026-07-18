@@ -1,6 +1,8 @@
 (() => {
   const WEBHOOK_URL =
     "https://n8n.wesellsoftware.com.br/webhook/960cf264-7532-4c13-9c0d-584eb2eb15d7";
+  const WAITLIST_WEBHOOK_URL =
+    "https://webhook.sellflux.app/flux/sellflux/8369bbb4fae0647587dacbd568c4bcf0";
   const BANNER_COLUMNS = ["Education", "CRM", "Solutions", "Diagnostico"];
   const TIMEZONE = "America/Sao_Paulo";
 
@@ -70,8 +72,8 @@
     );
   }
 
-  function sendWebhook(payload) {
-    fetch(WEBHOOK_URL, {
+  function sendWebhook(url, payload) {
+    fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -84,7 +86,7 @@
   function trackBannerClick(banner) {
     if (!BANNER_COLUMNS.includes(banner)) return;
 
-    sendWebhook({
+    sendWebhook(WEBHOOK_URL, {
       event: "banner_click",
       banner,
       ...buildBannerColumns(banner),
@@ -92,15 +94,20 @@
     });
   }
 
+  function toE164Phone(phone) {
+    const digits = phone.replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.startsWith("55")) return `+${digits}`;
+    return `+55${digits}`;
+  }
+
   function trackWaitlistSubmit({ name, email, phone }) {
-    sendWebhook({
-      event: "waitlist_submit",
-      banner: "Education",
-      ...buildBannerColumns("Education"),
-      ...buildContextPayload(),
-      nome: name,
+    sendWebhook(WAITLIST_WEBHOOK_URL, {
+      name,
       email,
-      telefone: phone,
+      phone: toE164Phone(phone),
+      tags: [],
+      remove_tags: [],
     });
   }
 
