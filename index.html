@@ -28,7 +28,7 @@
         >
           <img
             class="brand-logo"
-            src="./Entregaveis-44.png"
+            src="./assets/Entregaveis-44.png"
             alt="WeSell"
           />
         </a>
@@ -43,54 +43,55 @@
       </header>
 
       <nav class="link-list" aria-label="Links da WeSell">
-        <a
+        <button
+          type="button"
           class="banner-link"
-          href="https://www.instagram.com/wesellsoftware/"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Conheça a We Education"
+          id="waitlist-trigger"
+          aria-haspopup="dialog"
+          aria-controls="waitlist-modal"
+          aria-label="Inscreva-se na lista de espera da We Education"
         >
           <img
-            src="./image.png"
+            src="./assets/image.png"
             alt="We Education — conteúdo para criar um processo comercial lucrativo"
           />
-        </a>
+        </button>
 
         <a
           class="banner-link"
-          href="https://www.instagram.com/wesellsoftware/"
+          href="https://lp.wesellsoftware.com.br"
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Conheça a We Solutions"
         >
           <img
-            src="./BANNER 2.jpg"
+            src="./assets/BANNER 2.jpg"
             alt="We Solutions — encontramos a solução certa para sua empresa"
           />
         </a>
 
         <a
           class="banner-link"
-          href="https://www.instagram.com/wesellsoftware/"
+          href="https://form.wesellsoftware.com.br"
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Conheça o CRM Wesell"
         >
           <img
-            src="./BANNER 3.jpg"
+            src="./assets/BANNER 3.jpg"
             alt="CRM Wesell — onde seu lead vira cliente"
           />
         </a>
 
         <a
           class="banner-link"
-          href="https://www.instagram.com/wesellsoftware/"
+          href="https://diagnostico.wesellsoftware.com.br"
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Faça o diagnóstico gratuito da sua empresa"
         >
           <img
-            src="./image copy 2.png"
+            src="./assets/image copy 2.png"
             alt="Sua empresa está preparada para escalar? Diagnóstico WeSell gratuito"
           />
         </a>
@@ -102,8 +103,99 @@
         target="_blank"
         rel="noopener noreferrer"
       >
-        <img src="./image copy.png" alt="De ponta a ponta" />
+        <img src="./assets/image copy.png" alt="De ponta a ponta" />
       </a>
     </main>
+
+    <div
+      class="modal"
+      id="waitlist-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="waitlist-title"
+      hidden
+    >
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-panel" role="document">
+        <button
+          type="button"
+          class="modal-close"
+          data-close-modal
+          aria-label="Fechar"
+        >
+          ×
+        </button>
+
+        <div class="modal-content" id="waitlist-form-view">
+          <img
+            class="modal-logo"
+            src="./assets/Entregaveis-53.png"
+            alt="We"
+          />
+          <h2 id="waitlist-title">Lista de espera</h2>
+          <p class="modal-copy">
+            Inscreva-se para garantir acesso antecipado e descontos
+            imperdíveis.
+          </p>
+
+          <form class="waitlist-form" id="waitlist-form" novalidate>
+            <label class="field">
+              <span>Nome</span>
+              <input
+                type="text"
+                name="name"
+                autocomplete="name"
+                placeholder="Seu nome completo"
+                required
+              />
+            </label>
+
+            <label class="field">
+              <span>E-mail</span>
+              <input
+                type="email"
+                name="email"
+                autocomplete="email"
+                placeholder="seu@email.com"
+                required
+              />
+            </label>
+
+            <label class="field">
+              <span>Telefone</span>
+              <input
+                type="tel"
+                name="phone"
+                id="waitlist-phone"
+                autocomplete="tel"
+                inputmode="tel"
+                placeholder="(00) 00000-0000"
+                required
+              />
+            </label>
+
+            <p class="form-error" id="waitlist-error" hidden></p>
+
+            <button type="submit" class="submit-btn">
+              Quero me inscrever
+            </button>
+          </form>
+        </div>
+
+        <div class="modal-content modal-success" id="waitlist-success-view" hidden>
+          <p class="modal-eyebrow">Inscrição confirmada</p>
+          <h2>Você está na lista!</h2>
+          <p class="modal-copy">
+            Em breve você receberá novidades e condições exclusivas da We
+            Education.
+          </p>
+          <button type="button" class="submit-btn" data-close-modal>
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./script.js"></script>
   </body>
 </html>
