@@ -1,4 +1,9 @@
 (() => {
+  const WEBHOOK_URL =
+    "https://n8n.wesellsoftware.com.br/webhook/960cf264-7532-4c13-9c0d-584eb2eb15d7";
+  const BANNER_COLUMNS = ["Education", "CRM", "Solutions", "Diagnostico"];
+  const TIMEZONE = "America/Sao_Paulo";
+
   const modal = document.getElementById("waitlist-modal");
   const trigger = document.getElementById("waitlist-trigger");
   const form = document.getElementById("waitlist-form");
@@ -10,6 +15,94 @@
   if (!modal || !trigger || !form || !phoneInput) return;
 
   let lastFocus = null;
+
+  function formatDateSaoPaulo(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: TIMEZONE,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+
+    const get = (type) => parts.find((part) => part.type === type)?.value || "";
+    return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
+  }
+
+  function getUtmParams() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      utm_source: params.get("utm_source") || "",
+      utm_medium: params.get("utm_medium") || "",
+      utm_campaign: params.get("utm_campaign") || "",
+      utm_content: params.get("utm_content") || "",
+    };
+  }
+
+  function getDeviceType() {
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      ? "mobile"
+      : "desktop";
+  }
+
+  function buildContextPayload() {
+    const now = new Date();
+    return {
+      Data: formatDateSaoPaulo(now),
+      timestamp_iso: now.toISOString(),
+      timezone: TIMEZONE,
+      page_url: window.location.href,
+      referrer: document.referrer || "",
+      ...getUtmParams(),
+      device: getDeviceType(),
+      user_agent: navigator.userAgent,
+      screen: `${window.screen.width}x${window.screen.height}`,
+      language: navigator.language || "",
+    };
+  }
+
+  function buildBannerColumns(banner) {
+    return Object.fromEntries(
+      BANNER_COLUMNS.map((column) => [column, column === banner ? "1" : ""])
+    );
+  }
+
+  function sendWebhook(payload) {
+    fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch((error) => {
+      console.error("webhook-error", error);
+    });
+  }
+
+  function trackBannerClick(banner) {
+    if (!BANNER_COLUMNS.includes(banner)) return;
+
+    sendWebhook({
+      event: "banner_click",
+      banner,
+      ...buildBannerColumns(banner),
+      ...buildContextPayload(),
+    });
+  }
+
+  function trackWaitlistSubmit({ name, email, phone }) {
+    sendWebhook({
+      event: "waitlist_submit",
+      banner: "Education",
+      ...buildBannerColumns("Education"),
+      ...buildContextPayload(),
+      nome: name,
+      email,
+      telefone: phone,
+    });
+  }
 
   function openModal() {
     lastFocus = document.activeElement;
@@ -48,6 +141,12 @@
   function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
+
+  document.querySelectorAll(".banner-link[data-banner]").forEach((element) => {
+    element.addEventListener("click", () => {
+      trackBannerClick(element.dataset.banner);
+    });
+  });
 
   trigger.addEventListener("click", openModal);
 
@@ -99,7 +198,6 @@
     successView.hidden = false;
     successView.querySelector("button")?.focus();
 
-    // Pronto para integrar com API/CRM quando houver endpoint.
-    console.info("waitlist-lead", { name, email, phone });
+    trackWaitlistSubmit({ name, email, phone });
   });
 })();
