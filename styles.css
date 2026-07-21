@@ -306,12 +306,42 @@ body.modal-open {
   transform: translateY(-1px);
 }
 
+.modal-loading {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  padding: 18px 0 8px;
+}
+
+.modal-loading[hidden] {
+  display: none;
+}
+
+.modal-loading h2 {
+  margin-top: 18px;
+}
+
+.loading-spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #d4f06b;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .modal-success {
   text-align: center;
 }
 
 .modal-success .submit-btn {
   margin-top: 22px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes modal-in {

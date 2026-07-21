@@ -12,11 +12,14 @@
   const phoneInput = document.getElementById("waitlist-phone");
   const errorEl = document.getElementById("waitlist-error");
   const formView = document.getElementById("waitlist-form-view");
+  const loadingView = document.getElementById("waitlist-loading-view");
   const successView = document.getElementById("waitlist-success-view");
+  const LOADING_DELAY_MS = 3000;
 
   if (!modal || !trigger || !form || !phoneInput) return;
 
   let lastFocus = null;
+  let loadingTimer = null;
 
   function formatDateSaoPaulo(date = new Date()) {
     const parts = new Intl.DateTimeFormat("pt-BR", {
@@ -111,9 +114,18 @@
     });
   }
 
+  function clearLoadingTimer() {
+    if (loadingTimer) {
+      clearTimeout(loadingTimer);
+      loadingTimer = null;
+    }
+  }
+
   function openModal() {
     lastFocus = document.activeElement;
+    clearLoadingTimer();
     formView.hidden = false;
+    loadingView.hidden = true;
     successView.hidden = true;
     errorEl.hidden = true;
     errorEl.textContent = "";
@@ -125,6 +137,7 @@
   }
 
   function closeModal() {
+    clearLoadingTimer();
     modal.hidden = true;
     document.body.classList.remove("modal-open");
     lastFocus?.focus();
@@ -202,9 +215,17 @@
 
     errorEl.hidden = true;
     formView.hidden = true;
-    successView.hidden = false;
-    successView.querySelector("button")?.focus();
+    successView.hidden = true;
+    loadingView.hidden = false;
 
     trackWaitlistSubmit({ name, email, phone });
+
+    clearLoadingTimer();
+    loadingTimer = setTimeout(() => {
+      loadingView.hidden = true;
+      successView.hidden = false;
+      successView.querySelector("button")?.focus();
+      loadingTimer = null;
+    }, LOADING_DELAY_MS);
   });
 })();
