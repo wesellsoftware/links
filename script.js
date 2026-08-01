@@ -16,6 +16,15 @@
   const successView = document.getElementById("waitlist-success-view");
   const LOADING_DELAY_MS = 3000;
 
+  if (window.WeSellUtm) {
+    window.WeSellUtm.init({
+      linkSelector: "a.banner-link[href][data-campanha]",
+      domains: ["wesellsoftware.com.br", "wa.me", "api.whatsapp.com"],
+      fillForms: false,
+      autoApplyLinks: true,
+    });
+  }
+
   if (!modal || !trigger || !form || !phoneInput) return;
 
   let lastFocus = null;
@@ -37,12 +46,18 @@
     return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
   }
 
-  function getUtmParams() {
+  function getTrackingParams() {
+    const fromUtm = window.WeSellUtm ? window.WeSellUtm.get() : {};
     const params = new URLSearchParams(window.location.search);
+
     return {
-      utm_source: params.get("utm_source") || "",
-      utm_medium: params.get("utm_medium") || "",
-      utm_campaign: params.get("utm_campaign") || "",
+      origem: fromUtm.origem || "",
+      canal: fromUtm.canal || "",
+      campanha: fromUtm.campanha || "",
+      // compatibilidade com payloads antigos
+      utm_source: params.get("utm_source") || fromUtm.origem || "",
+      utm_medium: params.get("utm_medium") || fromUtm.canal || "",
+      utm_campaign: params.get("utm_campaign") || fromUtm.campanha || "",
       utm_content: params.get("utm_content") || "",
     };
   }
@@ -61,7 +76,7 @@
       timezone: TIMEZONE,
       page_url: window.location.href,
       referrer: document.referrer || "",
-      ...getUtmParams(),
+      ...getTrackingParams(),
       device: getDeviceType(),
       user_agent: navigator.userAgent,
       screen: `${window.screen.width}x${window.screen.height}`,
@@ -86,14 +101,18 @@
     });
   }
 
-  function trackBannerClick(banner) {
+  function trackBannerClick(banner, campanha) {
     if (!BANNER_COLUMNS.includes(banner)) return;
+
+    const tracking = getTrackingParams();
+    if (campanha) tracking.campanha = campanha;
 
     sendWebhook(WEBHOOK_URL, {
       event: "banner_click",
       banner,
       ...buildBannerColumns(banner),
       ...buildContextPayload(),
+      ...tracking,
     });
   }
 
@@ -111,6 +130,7 @@
       phone: toE164Phone(phone),
       tags: [],
       remove_tags: [],
+      ...getTrackingParams(),
     });
   }
 
@@ -164,7 +184,7 @@
 
   document.querySelectorAll(".banner-link[data-banner]").forEach((element) => {
     element.addEventListener("click", () => {
-      trackBannerClick(element.dataset.banner);
+      trackBannerClick(element.dataset.banner, element.dataset.campanha || "");
     });
   });
 
