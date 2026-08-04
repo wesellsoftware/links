@@ -223,27 +223,90 @@
     const campanhaAtual = latestCampaign(campanhaStack);
     const jornada = data.jornada || "";
 
-    // CRM / padrão WeSell — campanha atual (último passo)
+    // CRM / padrão WeSell — origem e canal sempre herdados; campanha = último passo
     if (origem) params.set("origem", origem);
     if (canal) params.set("canal", canal);
     if (campanhaAtual) params.set("campanha", campanhaAtual);
     if (jornada) params.set("jornada", jornada);
 
-    // Aliases UTM — source herdado; campaign empilhado; channel herdado
-    if (origem) params.set("utm_source", origem);
-    if (canal) params.set("utm_channel", canal);
+    // Campanha empilhada para reconstruir o caminho
     if (campanhaStack) params.set("utm_campaign", campanhaStack);
     if (jornada) params.set("utm_content", jornada);
+
+    // Aliases UTM só se ainda não vieram da entrada (ex.: Meta utm_source=ig)
+    if (origem && !params.get("utm_source")) params.set("utm_source", origem);
+    if (canal && !params.get("utm_channel")) params.set("utm_channel", canal);
+  }
+
+  function syncOrigemCanalFromUrl() {
+    const live = readQuery();
+    let changed = false;
+
+    if (live.origem && live.origem !== state.origem) {
+      state.origem = live.origem;
+      changed = true;
+    }
+    if (live.canal && live.canal !== state.canal) {
+      state.canal = live.canal;
+      changed = true;
+    }
+    // Só preenche campanha da URL se ainda não houver nenhuma
+    if (!state.campanha && live.campanha) {
+      state.campanha = live.campanha;
+      changed = true;
+    }
+    if (!state.jornada && (state.origem || state.canal || state.campanha)) {
+      state.jornada = [state.origem, state.canal, state.campanha]
+        .filter(Boolean)
+        .join("|");
+      changed = true;
+    }
+
+    if (changed) writeStorage(state);
+    return state;
+  }
+
+  function passThroughEntryParams(parsed) {
+    const current = new URLSearchParams(window.location.search);
+    ["utm_source", "utm_medium", "utm_content", "fbclid"].forEach((key) => {
+      const value = (current.get(key) || "").trim();
+      if (value) parsed.searchParams.set(key, value);
+    });
+  }
+
+  function ensureFromLiveUrl(data) {
+    const live = new URLSearchParams(window.location.search);
+    const next = { ...data };
+
+    if (!next.origem) {
+      next.origem = (live.get("origem") || "").trim();
+    }
+    if (!next.canal) {
+      next.canal = (live.get("canal") || live.get("utm_channel") || "").trim();
+    }
+    if (!next.campanha) {
+      next.campanha = (live.get("campanha") || live.get("utm_campaign") || "").trim();
+    }
+
+    return sanitize(next);
   }
 
   function appendToUrl(url, overrides = {}) {
-    const data = applyBannerOverrides(state, sanitize(overrides));
-    if (!CRM_KEYS.some((key) => data[key]) && !data.jornada) return String(url);
+    // Atualiza origem/canal da URL atual sem apagar a campanha empilhada
+    syncOrigemCanalFromUrl();
 
     let parsed;
     try {
       parsed = new URL(url, window.location.href);
     } catch {
+      return String(url);
+    }
+
+    let data = ensureFromLiveUrl(
+      applyBannerOverrides(state, sanitize(overrides))
+    );
+
+    if (!CRM_KEYS.some((key) => data[key]) && !data.jornada) {
       return String(url);
     }
 
@@ -254,6 +317,8 @@
       return appendToWhatsApp(parsed, data);
     }
 
+    // Preserva UTMs da Meta (ig/social/…) e depois aplica origem/canal/campanha
+    passThroughEntryParams(parsed);
     writeParams(parsed.searchParams, data);
     return parsed.toString();
   }
@@ -339,14 +404,31 @@
       if (!anchor.dataset.utmBound) {
         anchor.dataset.utmBound = "1";
         anchor.setAttribute("data-utm-href", original);
-        anchor.addEventListener("click", () => {
+        anchor.addEventListener("click", (event) => {
           const clickOverrides = overridesFromElement(anchor);
-          // Persiste o empilhamento antes de sair da página
+          syncOrigemCanalFromUrl();
           if (clickOverrides.campanha) {
             set({ campanha: clickOverrides.campanha });
           }
           const base = anchor.getAttribute("data-utm-href") || original;
-          anchor.href = appendToUrl(base, clickOverrides);
+          const nextHref = appendToUrl(base, clickOverrides);
+          anchor.href = nextHref;
+
+          // Garante navegação com a URL completa (origem + canal + campanha)
+          if (
+            event.button === 0 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            if (anchor.target === "_blank") {
+              window.open(nextHref, "_blank", "noopener,noreferrer");
+            } else {
+              window.location.assign(nextHref);
+            }
+          }
         });
       }
     });
