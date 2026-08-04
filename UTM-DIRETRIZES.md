@@ -28,12 +28,13 @@ O visitante chega com parâmetros na URL. Esses valores são:
 
    https://form.wesellsoftware.com.br/?origem=organico
      &canal=instagram
-     &campanha=wesell-solutions
-     &jornada=organico|instagram|link_bio_instagram|wesell-solutions
+     &campanha=wesell-CRM
+     &campanha_lead=link_bio_instagram|wesell-CRM
+     &utm_campaign=link_bio_instagram|wesell-CRM
+     &jornada=organico|instagram|link_bio_instagram|wesell-CRM
      &utm_source=organico
      &utm_channel=instagram
-     &utm_campaign=link_bio_instagram|wesell-solutions
-     &utm_content=organico|instagram|link_bio_instagram|wesell-solutions
+     &utm_content=organico|instagram|link_bio_instagram|wesell-CRM
 ```
 
 ### Regras de herança e empilhamento
@@ -43,8 +44,8 @@ O visitante chega com parâmetros na URL. Esses valores são:
 | `origem` / `utm_source` | **Herdado** da entrada (links page). Não é sobrescrito pelo banner. |
 | `canal` / `utm_channel` | **Herdado** da entrada. |
 | `campanha` | **Último passo** (campanha do banner clicado). |
-| `utm_campaign` | **Empilhado** (`entrada\|banner1\|banner2…`) para reconstruir o caminho. |
-| `jornada` / `utm_content` | Trilha completa: `origem\|canal\|campanhas…` |
+| `utm_campaign` / `campanha_lead` | **Só entrada + banner clicado** (`link_bio_instagram\|wesell-CRM`). Não acumula cliques anteriores. |
+| `jornada` / `utm_content` | Trilha: `origem\|canal\|campanha_entrada\|banner` |
 
 ---
 

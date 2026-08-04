@@ -58,6 +58,8 @@
       origem: fromUtm.origem || params.get("origem") || params.get("utm_source") || "",
       canal: fromUtm.canal || params.get("canal") || params.get("utm_channel") || params.get("utm_medium") || "",
       campanha: campanhaAtual || params.get("campanha") || params.get("utm_campaign") || "",
+      campanha_entrada: fromUtm.campanha_entrada || "",
+      campanha_lead: fromUtm.campanha || params.get("campanha_lead") || params.get("utm_campaign") || "",
       jornada: fromUtm.jornada || params.get("jornada") || params.get("utm_content") || "",
       utm_source: params.get("utm_source") || fromUtm.origem || "",
       utm_channel: params.get("utm_channel") || params.get("utm_medium") || fromUtm.canal || "",

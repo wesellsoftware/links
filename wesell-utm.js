@@ -5,8 +5,11 @@
  *   origem / canal / campanha
  *   ou aliases: utm_source / utm_channel|utm_medium / utm_campaign
  *
- * Ao clicar em banners, propaga os params e empilha a jornada
- * (todos os pontos pelos quais o lead passou).
+ * Ao clicar em um banner, empilha APENAS:
+ *   campanha_entrada | campanha_do_banner
+ * Ex.: link_bio_instagram|wesell-CRM
+ *
+ * Não acumula cliques anteriores (diagnóstico, solutions, etc.).
  *
  * API:
  *   WeSellUtm.get()
@@ -17,7 +20,7 @@
  *   WeSellUtm.toQueryString(overrides?)
  */
 (() => {
-  const KEYS = ["origem", "canal", "campanha", "jornada"];
+  const KEYS = ["origem", "canal", "campanha", "campanha_entrada", "jornada"];
   const CRM_KEYS = ["origem", "canal", "campanha"];
   const STORAGE_KEY = "wesell_utm";
   const COOKIE_NAME = "wesell_utm";
@@ -28,6 +31,7 @@
     origem: ["origem", "utm_source"],
     canal: ["canal", "utm_channel", "utm_medium"],
     campanha: ["campanha", "utm_campaign"],
+    campanha_entrada: ["campanha_entrada"],
     jornada: ["jornada", "utm_content"],
   };
 
@@ -124,33 +128,53 @@
     return parts;
   }
 
-  function buildJornada(base, nextCampanha) {
-    const parts = base.jornada
-      ? base.jornada.split("|").map((part) => part.trim()).filter(Boolean)
-      : [];
+  function firstCampaign(campanha) {
+    if (!campanha) return "";
+    return (
+      campanha
+        .split("|")
+        .map((part) => part.trim())
+        .filter(Boolean)[0] || ""
+    );
+  }
 
-    if (!parts.length) {
-      uniquePush(parts, base.origem);
-      uniquePush(parts, base.canal);
-      uniquePush(parts, base.campanha);
-    }
+  function latestCampaign(campanha) {
+    if (!campanha) return "";
+    const parts = campanha
+      .split("|")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    return parts[parts.length - 1] || "";
+  }
 
-    uniquePush(parts, nextCampanha);
+  /** Empilha só entrada + banner atual (não acumula cliques anteriores). */
+  function stackEntryAndBanner(entrada, banner) {
+    const parts = [];
+    uniquePush(parts, entrada);
+    uniquePush(parts, banner);
     return parts.join("|");
   }
 
-  function stackCampaignHistory(base, nextCampanha) {
+  function buildJornada(origem, canal, entrada, banner) {
     const parts = [];
-    if (base.campanha) {
-      base.campanha.split("|").forEach((part) => uniquePush(parts, part.trim()));
-    }
-    uniquePush(parts, nextCampanha);
+    uniquePush(parts, origem);
+    uniquePush(parts, canal);
+    uniquePush(parts, entrada);
+    uniquePush(parts, banner);
     return parts.join("|");
+  }
+
+  function resolveEntrada(base) {
+    return (
+      base.campanha_entrada ||
+      firstCampaign(base.campanha) ||
+      ""
+    );
   }
 
   /**
-   * Aplica override de banner sem perder a origem (utm_source) da links page.
-   * Empilha campanha/jornada para reconstruir o caminho do lead.
+   * Aplica override de banner sem perder origem/canal.
+   * campanha = campanha_entrada|banner (sem cliques intermediários).
    */
   function applyBannerOverrides(base, overlay = {}) {
     const next = { ...base };
@@ -158,17 +182,28 @@
     if (overlay.origem) next.origem = overlay.origem;
     if (overlay.canal) next.canal = overlay.canal;
 
+    const entrada = resolveEntrada(base);
+    if (entrada) next.campanha_entrada = entrada;
+
     if (overlay.campanha) {
-      next.jornada = buildJornada(base, overlay.campanha);
-      next.campanha = stackCampaignHistory(base, overlay.campanha);
+      next.campanha = stackEntryAndBanner(entrada, overlay.campanha);
+      next.jornada = buildJornada(
+        next.origem,
+        next.canal,
+        entrada,
+        overlay.campanha
+      );
     } else if (overlay.jornada) {
       next.jornada = overlay.jornada;
     }
 
     if (!next.jornada) {
-      next.jornada = [next.origem, next.canal, next.campanha]
-        .filter(Boolean)
-        .join("|");
+      next.jornada = buildJornada(
+        next.origem,
+        next.canal,
+        next.campanha_entrada || firstCampaign(next.campanha),
+        ""
+      );
     }
 
     return sanitize(next);
@@ -185,10 +220,27 @@
       overrides
     );
 
+    // URL de entrada define a campanha de origem e limpa stacks antigos do cookie
+    if (fromUrl.campanha) {
+      state.campanha_entrada = firstCampaign(fromUrl.campanha);
+      state.campanha = state.campanha_entrada;
+      state.jornada = buildJornada(
+        state.origem,
+        state.canal,
+        state.campanha_entrada,
+        ""
+      );
+    } else if (!state.campanha_entrada && state.campanha) {
+      state.campanha_entrada = firstCampaign(state.campanha);
+    }
+
     if (!state.jornada && (state.origem || state.canal || state.campanha)) {
-      state.jornada = [state.origem, state.canal, state.campanha]
-        .filter(Boolean)
-        .join("|");
+      state.jornada = buildJornada(
+        state.origem,
+        state.canal,
+        state.campanha_entrada || firstCampaign(state.campanha),
+        ""
+      );
     }
 
     return writeStorage(state);
@@ -201,12 +253,6 @@
   function set(partial) {
     state = applyBannerOverrides(state, sanitize(partial));
     return writeStorage(state);
-  }
-
-  function latestCampaign(campanha) {
-    if (!campanha) return "";
-    const parts = campanha.split("|").map((part) => part.trim()).filter(Boolean);
-    return parts[parts.length - 1] || "";
   }
 
   function toQueryString(overrides = {}) {
@@ -223,17 +269,19 @@
     const campanhaAtual = latestCampaign(campanhaStack);
     const jornada = data.jornada || "";
 
-    // CRM / padrão WeSell — origem e canal sempre herdados; campanha = último passo
     if (origem) params.set("origem", origem);
     if (canal) params.set("canal", canal);
     if (campanhaAtual) params.set("campanha", campanhaAtual);
+    if (data.campanha_entrada) {
+      params.set("campanha_entrada", data.campanha_entrada);
+    }
     if (jornada) params.set("jornada", jornada);
 
-    // Campanha empilhada para reconstruir o caminho
+    // Trilha do lead: entrada|banner (ex.: link_bio_instagram|wesell-CRM)
     if (campanhaStack) params.set("utm_campaign", campanhaStack);
+    if (campanhaStack) params.set("campanha_lead", campanhaStack);
     if (jornada) params.set("utm_content", jornada);
 
-    // Aliases UTM só se ainda não vieram da entrada (ex.: Meta utm_source=ig)
     if (origem && !params.get("utm_source")) params.set("utm_source", origem);
     if (canal && !params.get("utm_channel")) params.set("utm_channel", canal);
   }
@@ -250,15 +298,28 @@
       state.canal = live.canal;
       changed = true;
     }
-    // Só preenche campanha da URL se ainda não houver nenhuma
-    if (!state.campanha && live.campanha) {
-      state.campanha = live.campanha;
+    if (live.campanha) {
+      const entrada = firstCampaign(live.campanha);
+      if (entrada && entrada !== state.campanha_entrada) {
+        state.campanha_entrada = entrada;
+        changed = true;
+      }
+      if (!state.campanha_entrada) {
+        state.campanha_entrada = entrada;
+        changed = true;
+      }
+    }
+    if (!state.campanha && state.campanha_entrada) {
+      state.campanha = state.campanha_entrada;
       changed = true;
     }
-    if (!state.jornada && (state.origem || state.canal || state.campanha)) {
-      state.jornada = [state.origem, state.canal, state.campanha]
-        .filter(Boolean)
-        .join("|");
+    if (!state.jornada && (state.origem || state.canal || state.campanha_entrada)) {
+      state.jornada = buildJornada(
+        state.origem,
+        state.canal,
+        state.campanha_entrada,
+        ""
+      );
       changed = true;
     }
 
@@ -284,15 +345,19 @@
     if (!next.canal) {
       next.canal = (live.get("canal") || live.get("utm_channel") || "").trim();
     }
-    if (!next.campanha) {
-      next.campanha = (live.get("campanha") || live.get("utm_campaign") || "").trim();
+    if (!next.campanha_entrada) {
+      const fromLive =
+        (live.get("campanha") || live.get("utm_campaign") || "").trim();
+      if (fromLive) next.campanha_entrada = firstCampaign(fromLive);
+    }
+    if (!next.campanha && next.campanha_entrada) {
+      next.campanha = next.campanha_entrada;
     }
 
     return sanitize(next);
   }
 
   function appendToUrl(url, overrides = {}) {
-    // Atualiza origem/canal da URL atual sem apagar a campanha empilhada
     syncOrigemCanalFromUrl();
 
     let parsed;
@@ -317,7 +382,6 @@
       return appendToWhatsApp(parsed, data);
     }
 
-    // Preserva UTMs da Meta (ig/social/…) e depois aplica origem/canal/campanha
     passThroughEntryParams(parsed);
     writeParams(parsed.searchParams, data);
     return parsed.toString();
@@ -414,7 +478,6 @@
           const nextHref = appendToUrl(base, clickOverrides);
           anchor.href = nextHref;
 
-          // Garante navegação com a URL completa (origem + canal + campanha)
           if (
             event.button === 0 &&
             !event.metaKey &&
@@ -440,6 +503,7 @@
     const values = {
       ...data,
       campanha: latest,
+      campanha_lead: data.campanha || "",
       utm_source: data.origem || "",
       utm_channel: data.canal || "",
       utm_campaign: data.campanha || "",
