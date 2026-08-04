@@ -27,20 +27,127 @@
   const COOKIE_DAYS = 30;
   const PARENT_DOMAIN = "wesellsoftware.com.br";
 
-  const QUERY_ALIASES = {
-    origem: ["origem", "utm_source"],
-    canal: ["canal", "utm_channel", "utm_medium"],
-    campanha: ["campanha", "utm_campaign"],
-    campanha_entrada: ["campanha_entrada"],
-    jornada: ["jornada", "utm_content"],
+  /** Valores oficiais do CRM (campo Origem). */
+  const ORIGEM_VALUES = new Set([
+    "prospeccao_ativa",
+    "organico",
+    "indicacao",
+    "trafego_pago",
+  ]);
+
+  /** Valores oficiais do CRM (campo Canal). */
+  const CANAL_VALUES = new Set([
+    "evento",
+    "site",
+    "parceiro",
+    "cliente",
+    "instagram",
+    "pagina_venda",
+  ]);
+
+  /** Aliases → chave CRM de origem. */
+  const ORIGEM_ALIASES = {
+    organico: "organico",
+    organic: "organico",
+    orgânico: "organico",
+    indicacao: "indicacao",
+    indicação: "indicacao",
+    referral: "indicacao",
+    trafego_pago: "trafego_pago",
+    "tráfego_pago": "trafego_pago",
+    paid: "trafego_pago",
+    cpc: "trafego_pago",
+    ppc: "trafego_pago",
+    ads: "trafego_pago",
+    paid_social: "trafego_pago",
+    prospeccao_ativa: "prospeccao_ativa",
+    "prospecção_ativa": "prospeccao_ativa",
   };
+
+  /**
+   * Aliases → chave CRM de canal.
+   * Obs.: `ig` / `instagram` são CANAL, nunca origem.
+   */
+  const CANAL_ALIASES = {
+    evento: "evento",
+    site: "site",
+    website: "site",
+    web: "site",
+    parceiro: "parceiro",
+    partner: "parceiro",
+    cliente: "cliente",
+    client: "cliente",
+    instagram: "instagram",
+    ig: "instagram",
+    pagina_venda: "pagina_venda",
+    pagina_vendas: "pagina_venda",
+    "páginas_de_venda": "pagina_venda",
+  };
+
+  function normalizeOrigem(value) {
+    const key = String(value || "")
+      .trim()
+      .toLowerCase();
+    if (!key) return "";
+    if (ORIGEM_VALUES.has(key)) return key;
+    return ORIGEM_ALIASES[key] || "";
+  }
+
+  function normalizeCanal(value) {
+    const key = String(value || "")
+      .trim()
+      .toLowerCase();
+    if (!key) return "";
+    if (CANAL_VALUES.has(key)) return key;
+    return CANAL_ALIASES[key] || "";
+  }
+
+  /**
+   * Lê origem/canal só com chaves do CRM.
+   * - Prefere `origem` / `canal` explícitos
+   * - `utm_source=ig` → canal=instagram (não origem)
+   * - `utm_medium=social` sozinho não é canal válido
+   */
+  function readOrigemCanal(params) {
+    let origem = normalizeOrigem(params.get("origem"));
+    let canal = normalizeCanal(
+      params.get("canal") || params.get("utm_channel")
+    );
+
+    const utmSource = (params.get("utm_source") || "").trim().toLowerCase();
+    const utmMedium = (params.get("utm_medium") || "").trim().toLowerCase();
+
+    if (!origem) {
+      origem = normalizeOrigem(utmSource);
+    }
+
+    if (!canal) {
+      canal = normalizeCanal(utmMedium) || normalizeCanal(utmSource);
+    }
+
+    // Padrão Meta bio: utm_source=ig&utm_medium=social
+    if (!canal && (utmSource === "ig" || utmSource === "instagram")) {
+      canal = "instagram";
+    }
+
+    return { origem, canal };
+  }
 
   function readQuery() {
     const params = new URLSearchParams(window.location.search);
     const fromQuery = {};
+    const { origem, canal } = readOrigemCanal(params);
 
-    for (const key of KEYS) {
-      const aliases = QUERY_ALIASES[key] || [key];
+    if (origem) fromQuery.origem = origem;
+    if (canal) fromQuery.canal = canal;
+
+    for (const key of ["campanha", "campanha_entrada", "jornada"]) {
+      const aliases =
+        key === "campanha"
+          ? ["campanha", "utm_campaign"]
+          : key === "jornada"
+            ? ["jornada", "utm_content"]
+            : ["campanha_entrada"];
       for (const alias of aliases) {
         const value = (params.get(alias) || "").trim();
         if (value) {
@@ -80,7 +187,15 @@
     if (!input || typeof input !== "object") return {};
     const out = {};
     for (const key of KEYS) {
-      const value = String(input[key] || "").trim();
+      let value = String(input[key] || "").trim();
+      if (!value) continue;
+
+      if (key === "origem") {
+        value = normalizeOrigem(value);
+      } else if (key === "canal") {
+        value = normalizeCanal(value);
+      }
+
       if (value) out[key] = value;
     }
     return out;
@@ -338,13 +453,11 @@
   function ensureFromLiveUrl(data) {
     const live = new URLSearchParams(window.location.search);
     const next = { ...data };
+    const resolved = readOrigemCanal(live);
 
-    if (!next.origem) {
-      next.origem = (live.get("origem") || "").trim();
-    }
-    if (!next.canal) {
-      next.canal = (live.get("canal") || live.get("utm_channel") || "").trim();
-    }
+    if (!next.origem && resolved.origem) next.origem = resolved.origem;
+    if (!next.canal && resolved.canal) next.canal = resolved.canal;
+
     if (!next.campanha_entrada) {
       const fromLive =
         (live.get("campanha") || live.get("utm_campaign") || "").trim();
@@ -550,6 +663,8 @@
 
   window.WeSellUtm = {
     KEYS,
+    ORIGEM_VALUES: [...ORIGEM_VALUES],
+    CANAL_VALUES: [...CANAL_VALUES],
     init,
     get,
     set,

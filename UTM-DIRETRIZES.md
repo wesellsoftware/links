@@ -41,8 +41,8 @@ O visitante chega com parâmetros na URL. Esses valores são:
 
 | Campo | Comportamento |
 |---|---|
-| `origem` / `utm_source` | **Herdado** da entrada (links page). Não é sobrescrito pelo banner. |
-| `canal` / `utm_channel` | **Herdado** da entrada. |
+| `origem` | **Herdado** da entrada. Só chaves CRM: `prospeccao_ativa`, `organico`, `indicacao`, `trafego_pago`. |
+| `canal` | **Herdado** da entrada. Só chaves CRM: `evento`, `site`, `parceiro`, `cliente`, `instagram`, `pagina_venda`. |
 | `campanha` | **Último passo** (campanha do banner clicado). |
 | `utm_campaign` / `campanha_lead` | **Só entrada + banner clicado** (`link_bio_instagram\|wesell-CRM`). Não acumula cliques anteriores. |
 | `jornada` / `utm_content` | Trilha: `origem\|canal\|campanha_entrada\|banner` |
@@ -53,7 +53,9 @@ O visitante chega com parâmetros na URL. Esses valores são:
 
 > Use **somente** os identificadores abaixo. Nunca envie o label amigável (`Instagram`, `Orgânico`, etc.).
 
-### Origem — identificador: `origem` (alias: `utm_source`)
+### Origem — identificador: `origem`
+
+> **Somente** estas chaves. Labels amigáveis (`Orgânico`, `Instagram`, etc.) são inválidos.
 
 | Chave | Label |
 |---|---|
@@ -62,7 +64,9 @@ O visitante chega com parâmetros na URL. Esses valores são:
 | `indicacao` | Indicação |
 | `trafego_pago` | Tráfego Pago |
 
-### Canal — identificador: `canal` (aliases: `utm_channel`, `utm_medium`)
+### Canal — identificador: `canal`
+
+> **Somente** estas chaves.
 
 | Chave | Label |
 |---|---|
@@ -72,6 +76,27 @@ O visitante chega com parâmetros na URL. Esses valores são:
 | `cliente` | Cliente |
 | `instagram` | Instagram |
 | `pagina_venda` | Páginas de Venda |
+
+### Mapeamento de aliases (Meta / entrada)
+
+A links page **normaliza** valores extras da Meta para o padrão CRM. Campanha continua concatenando o caminho.
+
+| Valor na URL | Vira no CRM |
+|---|---|
+| `origem=organico` | `origem=organico` |
+| `canal=instagram` | `canal=instagram` |
+| `utm_source=ig` | `canal=instagram` (nunca origem) |
+| `utm_source=instagram` | `canal=instagram` |
+| `utm_medium=social` | ignorado sozinho (não é canal CRM) |
+| `utm_source=cpc` / `paid` / `ads` | `origem=trafego_pago` |
+| `utm_source=organic` | `origem=organico` |
+
+**Exemplo bio Instagram (recomendado)**
+```
+https://links.wesellsoftware.com.br/?origem=organico&canal=instagram&campanha=link_bio_instagram
+```
+
+Os `utm_source=ig&utm_medium=social` da Meta podem coexistir na URL, mas **não substituem** `origem`/`canal` do CRM.
 
 ### Campanha — identificador: `campanha` (alias: `utm_campaign`)
 
