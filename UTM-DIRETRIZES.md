@@ -1,4 +1,4 @@
-# WeSell — Diretrizes de atribuição (origem, canal, campanha)
+# WeSell — Diretrizes de atribuição (origem, canal, campanha, jornada)
 
 Documento de referência para implementar o rastreamento de atribuição em qualquer página WeSell (links, form, diagnóstico, landing pages, etc.).
 
@@ -10,24 +10,41 @@ O visitante chega com parâmetros na URL. Esses valores são:
 
 1. **Capturados** ao carregar a página
 2. **Persistidos** (sessionStorage + cookie no domínio `.wesellsoftware.com.br`)
-3. **Propagados** aos próximos links internos
+3. **Propagados e empilhados** nos próximos cliques (banners / CTAs)
 4. **Enviados** ao CRM / webhook / formulário
 
-### Fluxo exemplo
+### Fluxo exemplo (links page)
 
 ```
-Origem (bio Instagram)
-  https://links.wesellsoftware.com.br/?origem=organico&canal=instagram&campanha=link_bio_instagram
-        │
-        ▼ clique no banner CRM
-  https://form.wesellsoftware.com.br/?origem=organico&canal=instagram&campanha=pagina_vendas_crm
-        │
-        ▼ submit do formulário
-  CRM grava: origem=organico | canal=instagram | campanha=pagina_vendas_crm
+1. Lead no Instagram clica no link da bio
+   https://links.wesellsoftware.com.br/?origem=organico&canal=instagram&campanha=link_bio_instagram
+   (aliases aceitos: utm_source / utm_channel / utm_campaign)
+
+2. Abre a página de links — UTMs já devem estar na URL
+   (a página NÃO inventa UTMs; eles precisam vir no link da bio)
+
+3. Lead clica no banner CRM (LP), Solutions (form) ou Diagnóstico
+   Nesse momento o script EMPILHA a jornada e propaga:
+
+   https://form.wesellsoftware.com.br/?origem=organico
+     &canal=instagram
+     &campanha=wesell-solutions
+     &jornada=organico|instagram|link_bio_instagram|wesell-solutions
+     &utm_source=organico
+     &utm_channel=instagram
+     &utm_campaign=link_bio_instagram|wesell-solutions
+     &utm_content=organico|instagram|link_bio_instagram|wesell-solutions
 ```
 
-- `origem` e `canal` geralmente **permanecem** da entrada
-- `campanha` é **atualizada** conforme a página/ação do clique
+### Regras de herança e empilhamento
+
+| Campo | Comportamento |
+|---|---|
+| `origem` / `utm_source` | **Herdado** da entrada (links page). Não é sobrescrito pelo banner. |
+| `canal` / `utm_channel` | **Herdado** da entrada. |
+| `campanha` | **Último passo** (campanha do banner clicado). |
+| `utm_campaign` | **Empilhado** (`entrada\|banner1\|banner2…`) para reconstruir o caminho. |
+| `jornada` / `utm_content` | Trilha completa: `origem\|canal\|campanhas…` |
 
 ---
 
@@ -35,7 +52,7 @@ Origem (bio Instagram)
 
 > Use **somente** os identificadores abaixo. Nunca envie o label amigável (`Instagram`, `Orgânico`, etc.).
 
-### Origem — identificador: `origem`
+### Origem — identificador: `origem` (alias: `utm_source`)
 
 | Chave | Label |
 |---|---|
@@ -44,7 +61,7 @@ Origem (bio Instagram)
 | `indicacao` | Indicação |
 | `trafego_pago` | Tráfego Pago |
 
-### Canal — identificador: `canal`
+### Canal — identificador: `canal` (aliases: `utm_channel`, `utm_medium`)
 
 | Chave | Label |
 |---|---|
@@ -55,41 +72,67 @@ Origem (bio Instagram)
 | `instagram` | Instagram |
 | `pagina_venda` | Páginas de Venda |
 
-### Campanha — identificador: `campanha`
+### Campanha — identificador: `campanha` (alias: `utm_campaign`)
+
+#### Entrada (bio / ads)
 
 | Chave | Label |
 |---|---|
-| `diagnostico` | Diagnostico |
 | `link_bio_instagram` | Link da Bio - Instagram |
-| `form_solutions` | Formulário Solutions |
-| `pagina_vendas_crm` | Página de Vendas - CRM |
 | `link_bio_tiktok` | Link da Bio - TikTok |
 
+#### Produtos (banners da links page)
+
+| Chave | Label | Onde usa |
+|---|---|---|
+| `wesell-education` | WeSell Education | Banner 1 + modal de pré-inscrição |
+| `wesell-CRM` | WeSell CRM | Banner 2 (`lp.wesellsoftware.com.br`) |
+| `wesell-solutions` | WeSell Solutions | Banner 3 (`form.wesellsoftware.com.br`) |
+| `wesell-diagnostico` | WeSell Diagnóstico | Banner 4 (`dgn.wesellsoftware.com.br`) |
+
 > Se precisar de um valor novo, **crie a opção no CRM primeiro** e só depois use a chave no código/URL.
+
+### Jornada — identificador: `jornada` (alias: `utm_content`)
+
+Trilha empilhada com `|` para reconstruir o caminho do lead, ex.:
+
+```
+organico|instagram|link_bio_instagram|wesell-CRM
+```
 
 ---
 
 ## 3. Regras de URL
 
 1. O primeiro parâmetro usa `?`, os seguintes usam `&`
-2. Valores em **minúsculo**, snake_case, exatamente como na tabela
-3. Não use `utm_source` / `utm_medium` / `utm_campaign` para esses campos do CRM — use `origem`, `canal`, `campanha`
-4. Ordem sugerida: `origem` → `canal` → `campanha`
+2. Valores exatamente como nas tabelas (sem acento, sem espaços)
+3. Aceitos na **entrada**: `origem`/`canal`/`campanha` **ou** `utm_source`/`utm_channel`/`utm_campaign`
+4. Na **saída** (clique do banner), o script envia **os dois formatos** (CRM + aliases UTM)
+5. Ordem sugerida: `origem` → `canal` → `campanha`
 
-**Correto**
+**Correto (link da bio)**
 ```
 https://links.wesellsoftware.com.br/?origem=organico&canal=instagram&campanha=link_bio_instagram
+```
+
+**Também correto (aliases UTM)**
+```
+https://links.wesellsoftware.com.br/?utm_source=organico&utm_channel=instagram&utm_campaign=link_bio_instagram
 ```
 
 **Incorreto**
 ```
 https://links.wesellsoftware.com.br/utm_source=Instagram
 https://links.wesellsoftware.com.br/?origem=Orgânico&canal=Instagram
+https://links.wesellsoftware.com.br/
+← sem params: a página não preenche UTMs sozinha
 ```
 
 ---
 
 ## 4. Operação — links de entrada (bio, ads, parceiros)
+
+> **Importante:** a página de links **não cria** UTMs na URL. Se o Instagram abrir `https://links.wesellsoftware.com.br/` sem query string, o link da bio está cadastrado **sem** parâmetros.
 
 Monte o link **antes** de publicar. Exemplos:
 
@@ -100,20 +143,22 @@ Monte o link **antes** de publicar. Exemplos:
 | Anúncio Meta (pago) | `https://links.wesellsoftware.com.br/?origem=trafego_pago&canal=instagram&campanha=link_bio_instagram` |
 | Indicação / parceiro | `https://links.wesellsoftware.com.br/?origem=indicacao&canal=parceiro` |
 | Evento / feira | `https://links.wesellsoftware.com.br/?origem=prospeccao_ativa&canal=evento` |
-| Link direto para o form | `https://form.wesellsoftware.com.br/?origem=organico&canal=site&campanha=pagina_vendas_crm` |
-| Link direto para diagnóstico | `https://dgn.wesellsoftware.com.br/?origem=organico&canal=site&campanha=diagnostico` |
+| Link direto para Solutions | `https://form.wesellsoftware.com.br/?origem=organico&canal=site&campanha=wesell-solutions` |
+| Link direto para diagnóstico | `https://dgn.wesellsoftware.com.br/?origem=organico&canal=site&campanha=wesell-diagnostico` |
 
 Checklist operacional:
 
+- [ ] Link da bio/ads **já inclui** `?origem=&canal=&campanha=`
 - [ ] Chaves batem com o CRM
 - [ ] Link testado no celular (Instagram/WhatsApp às vezes reescrevem URLs)
-- [ ] Destino final realmente recebe e grava os 3 campos
+- [ ] Após clicar no banner, a URL de destino traz `utm_source` herdado + `utm_campaign` empilhado + `jornada`
 
 ---
 
 ## 5. Script compartilhado (`wesell-utm.js`)
 
-Arquivo no repositório da links page: `wesell-utm.js`
+Arquivo no repositório da links page: `wesell-utm.js`  
+URL pública: `https://links.wesellsoftware.com.br/wesell-utm.js`
 
 ### Inclusão mínima em qualquer página
 
@@ -122,9 +167,9 @@ Arquivo no repositório da links page: `wesell-utm.js`
 <script>
   WeSellUtm.init({
     // Opcional: força a campanha desta página
-    // campanha: "pagina_vendas_crm",
+    // campanha: "wesell-solutions",
     linkSelector: "a[href]",
-    domains: ["wesellsoftware.com.br"],
+    domains: ["wesellsoftware.com.br", "wa.me", "api.whatsapp.com"],
     fillForms: true,
   });
 </script>
@@ -137,17 +182,17 @@ Arquivo no repositório da links page: `wesell-utm.js`
 | `origem` / `canal` / `campanha` | — | Sobrescreve / define valores nesta página |
 | `linkSelector` | `a[href][data-campanha], a[href][data-utm-link]` | Quais links receberão os params |
 | `domains` | `["wesellsoftware.com.br"]` | Domínios elegíveis para auto-propagação |
-| `fillForms` | `true` | Preenche inputs `name="origem\|canal\|campanha"` |
+| `fillForms` | `true` | Preenche inputs `name="origem\|canal\|campanha\|jornada"` (+ aliases utm_*) |
 | `autoApplyLinks` | `true` | Aplica UTMs nos links no load |
 
 ### Atributos HTML úteis
 
 ```html
-<!-- Define/atualiza campanha ao clicar neste link -->
-<a href="https://form.wesellsoftware.com.br" data-campanha="pagina_vendas_crm">CRM</a>
+<!-- Define/atualiza campanha ao clicar neste link (empilha jornada) -->
+<a href="https://form.wesellsoftware.com.br" data-campanha="wesell-solutions">Solutions</a>
 
 <!-- Força tracking mesmo fora do seletor padrão -->
-<a href="https://dgn.wesellsoftware.com.br" data-utm-link data-campanha="diagnostico">Diagnóstico</a>
+<a href="https://dgn.wesellsoftware.com.br" data-utm-link data-campanha="wesell-diagnostico">Diagnóstico</a>
 
 <!-- Não propagar UTMs neste link -->
 <a href="https://www.instagram.com/wesellsoftware/" data-utm-ignore>Instagram</a>
@@ -159,14 +204,13 @@ Também aceita `data-origem` e `data-canal` quando precisar sobrescrever no cliq
 
 ```html
 <form id="lead-form">
-  <!-- campos visíveis do lead -->
   <input type="text" name="name" />
   <input type="email" name="email" />
 
-  <!-- preenchidos automaticamente pelo WeSellUtm.init({ fillForms: true }) -->
   <input type="hidden" name="origem" />
   <input type="hidden" name="canal" />
   <input type="hidden" name="campanha" />
+  <input type="hidden" name="jornada" />
 
   <button type="submit">Enviar</button>
 </form>
@@ -177,22 +221,26 @@ Também aceita `data-origem` e `data-canal` quando precisar sobrescrever no cliq
 ```js
 // Ler valores atuais
 WeSellUtm.get();
-// → { origem: "organico", canal: "instagram", campanha: "link_bio_instagram" }
+// → {
+//     origem: "organico",
+//     canal: "instagram",
+//     campanha: "link_bio_instagram|wesell-solutions",
+//     jornada: "organico|instagram|link_bio_instagram|wesell-solutions"
+//   }
 
-// Atualizar manualmente
-WeSellUtm.set({ campanha: "pagina_vendas_crm" });
+// Empilhar campanha manualmente (ex.: submit Education)
+WeSellUtm.set({ campanha: "wesell-education" });
 
-// Montar URL com tracking
+// Montar URL com tracking empilhado
 WeSellUtm.appendToUrl("https://form.wesellsoftware.com.br", {
-  campanha: "pagina_vendas_crm",
+  campanha: "wesell-solutions",
 });
 
-// Query string pronta
+// Query string pronta (CRM + aliases UTM)
 WeSellUtm.toQueryString();
-// → "origem=organico&canal=instagram&campanha=pagina_vendas_crm"
 
 // Reaplicar em links / forms depois de render dinâmico
-WeSellUtm.applyToLinks("a[href]", ["wesellsoftware.com.br"]);
+WeSellUtm.applyToLinks("a[href]", ["wesellsoftware.com.br", "wa.me"]);
 WeSellUtm.fillForms(document.getElementById("lead-form"));
 ```
 
@@ -213,30 +261,31 @@ Prioridade de merge: **URL > sessionStorage > cookie** (valores da URL ganham).
 ### Página de links (hub)
 
 - [ ] Incluir `wesell-utm.js`
-- [ ] Cada CTA interno com `data-campanha` correto
-- [ ] Links externos (Instagram, etc.) com `data-utm-ignore`
-- [ ] WhatsApp: o script anexa `[origem:… \| canal:… \| campanha:…]` no texto da mensagem
+- [ ] Cada banner com `data-campanha` correto
+- [ ] Links externos (Instagram do header/footer) com `data-utm-ignore`
+- [ ] WhatsApp: o script anexa o marcador de tracking no texto da mensagem
 
 Mapeamento atual da links page:
 
-| Banner | `data-campanha` |
-|---|---|
-| Solutions (WhatsApp) | `form_solutions` |
-| CRM | `pagina_vendas_crm` |
-| Diagnóstico | `diagnostico` |
-| Education (modal) | — (sem opção CRM; envia só origem/canal no webhook) |
+| # | Banner | Destino | `data-banner` | `data-campanha` |
+|---|---|---|---|---|
+| 1 | Education (modal pré-inscrição) | Modal → Sellflux | `Education` | `wesell-education` |
+| 2 | CRM | `lp.wesellsoftware.com.br` | `CRM` | `wesell-CRM` |
+| 3 | Solutions | `form.wesellsoftware.com.br` | `Solutions` | `wesell-solutions` |
+| 4 | Diagnóstico | `dgn.wesellsoftware.com.br` | `Diagnostico` | `wesell-diagnostico` |
 
 ### Página de formulário / vendas (`form.*`)
 
-- [ ] Incluir `wesell-utm.js` + `init({ campanha: "pagina_vendas_crm", fillForms: true })` se esta for a campanha padrão da página
-- [ ] Hidden inputs `origem`, `canal`, `campanha`
-- [ ] Backend / CRM mapear esses campos para o negócio
+- [ ] Incluir `wesell-utm.js` + `init({ fillForms: true })`
+- [ ] Preferir campanha de entrada/propagada (`wesell-solutions`); só force no `init` se for acesso direto sem params
+- [ ] Hidden inputs `origem`, `canal`, `campanha`, `jornada`
+- [ ] Backend / CRM mapear esses campos
 - [ ] Propagar tracking em CTAs para outras páginas WeSell
 
 ### Página de diagnóstico (`dgn.*`)
 
 - [ ] Mesmo padrão do form
-- [ ] Preferir `campanha=diagnostico` (via URL de entrada ou `init`)
+- [ ] Preferir `campanha=wesell-diagnostico`
 
 ### Landing / página de vendas avulsa
 
@@ -246,13 +295,32 @@ Mapeamento atual da links page:
 
 ### Integração via webhook / API
 
-Envie no payload JSON:
+Payload típico (clique / lead):
 
 ```json
 {
   "origem": "organico",
   "canal": "instagram",
-  "campanha": "pagina_vendas_crm"
+  "campanha": "wesell-solutions",
+  "jornada": "organico|instagram|link_bio_instagram|wesell-solutions",
+  "utm_source": "organico",
+  "utm_channel": "instagram",
+  "utm_campaign": "link_bio_instagram|wesell-solutions"
+}
+```
+
+Pré-inscrição Education (Sellflux) — campos do lead + tracking:
+
+```json
+{
+  "name": "Nome",
+  "email": "email@dominio.com",
+  "phone": "+5511999999999",
+  "tags": [],
+  "remove_tags": [],
+  "origem": "organico",
+  "canal": "instagram",
+  "campanha": "wesell-education"
 }
 ```
 
@@ -267,7 +335,8 @@ Obtenha os valores com `WeSellUtm.get()` no submit.
 Query params UTM **não** alimentam o CRM. O script:
 
 1. Mantém o texto original da mensagem
-2. Anexa um marcador no final, ex.: `[origem:organico | canal:instagram | campanha:form_solutions]`
+2. Anexa um marcador no final, ex.:  
+   `[utm_source:organico | utm_channel:instagram | utm_campaign:link_bio_instagram|wesell-CRM | jornada:organico|instagram|link_bio_instagram|wesell-CRM]`
 
 Se o atendimento precisar da atribuição no CRM, o time deve copiar/interpretar esse marcador, **ou** preferir um formulário web que grave os campos.
 
@@ -276,7 +345,7 @@ Se o atendimento precisar da atribuição no CRM, o time deve copiar/interpretar
 Depois de inserir links/forms via JS:
 
 ```js
-WeSellUtm.applyToLinks("a[href]", ["wesellsoftware.com.br"]);
+WeSellUtm.applyToLinks("a[href]", ["wesellsoftware.com.br", "wa.me"]);
 WeSellUtm.fillForms();
 ```
 
@@ -288,12 +357,16 @@ O cookie cross-subdomain não se aplica. A propagação ainda funciona porque os
 
 ## 8. Teste de aceite (obrigatório antes de publicar)
 
-1. Abra a página com params na URL  
+1. Abra a página **com** params na URL  
    `?origem=organico&canal=instagram&campanha=link_bio_instagram`
-2. No DevTools → Application → Session Storage / Cookies, confirme `wesell_utm`
-3. Clique em um CTA interno e confira a URL de destino (params preservados + `campanha` atualizada se houver `data-campanha`)
-4. No formulário, confira se os hidden foram preenchidos
-5. Envie um lead de teste e valide no CRM os 3 campos
+2. Confirme que a barra de endereço **mantém** os params (se abrir limpa, o link de entrada está errado)
+3. No DevTools → Application → Session Storage / Cookies, confirme `wesell_utm`
+4. Clique em um banner e confira a URL de destino:
+   - `utm_source` / `origem` = `organico` (herdado)
+   - `campanha` = campanha do banner (`wesell-CRM`, `wesell-solutions`, etc.)
+   - `utm_campaign` e `jornada` empilhados com a entrada
+5. No formulário, confira se os hidden foram preenchidos
+6. Envie um lead de teste e valide no CRM / planilha / Sellflux
 
 ---
 
@@ -304,9 +377,9 @@ O cookie cross-subdomain não se aplica. A propagação ainda funciona porque os
 <script src="https://links.wesellsoftware.com.br/wesell-utm.js"></script>
 <script>
   WeSellUtm.init({
-    campanha: "pagina_vendas_crm", // ajuste por página
+    // campanha: "wesell-solutions", // só se for a campanha padrão desta página
     linkSelector: "a[href]",
-    domains: ["wesellsoftware.com.br"],
+    domains: ["wesellsoftware.com.br", "wa.me", "api.whatsapp.com"],
     fillForms: true,
   });
 </script>
@@ -316,13 +389,14 @@ O cookie cross-subdomain não se aplica. A propagação ainda funciona porque os
   <input type="hidden" name="origem" />
   <input type="hidden" name="canal" />
   <input type="hidden" name="campanha" />
+  <input type="hidden" name="jornada" />
   <!-- demais campos -->
 </form>
 
 <!-- 3. CTA para outra página WeSell -->
 <a
   href="https://dgn.wesellsoftware.com.br"
-  data-campanha="diagnostico"
+  data-campanha="wesell-diagnostico"
 >
   Fazer diagnóstico
 </a>
@@ -336,5 +410,6 @@ O cookie cross-subdomain não se aplica. A propagação ainda funciona porque os
 |---|---|
 | **Operação** | Publicar links de bio/ads já com `?origem=&canal=&campanha=` |
 | **Front** | Incluir `wesell-utm.js` + `init` + hidden fields / `data-campanha` |
-| **Destino** | Gravar `origem`, `canal`, `campanha` no CRM com as chaves oficiais |
-| **Não fazer** | Usar labels, inventar chaves sem cadastrar no CRM, ou confiar só no WhatsApp para atribuição estruturada |
+| **Clique no banner** | Empilhar jornada; herdar `utm_source`; atualizar `campanha` do produto |
+| **Destino** | Gravar `origem`, `canal`, `campanha`, `jornada` (e aliases UTM se útil) |
+| **Não fazer** | Usar labels; inventar chaves sem cadastrar no CRM; esperar que a links page invente UTMs sem params na bio; confiar só no WhatsApp para atribuição estruturada |
