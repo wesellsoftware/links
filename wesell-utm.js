@@ -1,29 +1,12 @@
 /**
- * WeSell UTM / atribuição (origem, canal, campanha)
+ * WeSell UTM / atribuição (origem, canal, campanha + jornada)
  *
- * Uso em qualquer página:
+ * Aceita na URL de entrada:
+ *   origem / canal / campanha
+ *   ou aliases: utm_source / utm_channel|utm_medium / utm_campaign
  *
- *   <script src="https://links.wesellsoftware.com.br/wesell-utm.js"></script>
- *   <script>
- *     WeSellUtm.init({
- *       // opcional: sobrescreve campanha nesta página
- *       // campanha: "pagina_vendas_crm",
- *       // propaga para links internos WeSell
- *       linkSelector: 'a[href]',
- *       domains: ["wesellsoftware.com.br"],
- *       // preenche inputs hidden name="origem|canal|campanha"
- *       fillForms: true,
- *     });
- *   </script>
- *
- * Em links específicos:
- *   <a href="https://form.wesellsoftware.com.br" data-campanha="pagina_vendas_crm">
- *
- * Valores CRM (chaves):
- *   origem:   prospeccao_ativa | organico | indicacao | trafego_pago
- *   canal:    evento | site | parceiro | cliente | instagram | pagina_venda
- *   campanha: diagnostico | link_bio_instagram | form_solutions |
- *             pagina_vendas_crm | link_bio_tiktok
+ * Ao clicar em banners, propaga os params e empilha a jornada
+ * (todos os pontos pelos quais o lead passou).
  *
  * API:
  *   WeSellUtm.get()
@@ -34,19 +17,35 @@
  *   WeSellUtm.toQueryString(overrides?)
  */
 (() => {
-  const KEYS = ["origem", "canal", "campanha"];
+  const KEYS = ["origem", "canal", "campanha", "jornada"];
+  const CRM_KEYS = ["origem", "canal", "campanha"];
   const STORAGE_KEY = "wesell_utm";
   const COOKIE_NAME = "wesell_utm";
   const COOKIE_DAYS = 30;
   const PARENT_DOMAIN = "wesellsoftware.com.br";
 
+  const QUERY_ALIASES = {
+    origem: ["origem", "utm_source"],
+    canal: ["canal", "utm_channel", "utm_medium"],
+    campanha: ["campanha", "utm_campaign"],
+    jornada: ["jornada", "utm_content"],
+  };
+
   function readQuery() {
     const params = new URLSearchParams(window.location.search);
     const fromQuery = {};
+
     for (const key of KEYS) {
-      const value = (params.get(key) || "").trim();
-      if (value) fromQuery[key] = value;
+      const aliases = QUERY_ALIASES[key] || [key];
+      for (const alias of aliases) {
+        const value = (params.get(alias) || "").trim();
+        if (value) {
+          fromQuery[key] = value;
+          break;
+        }
+      }
     }
+
     return fromQuery;
   }
 
@@ -54,8 +53,7 @@
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return sanitize(parsed);
+      return sanitize(JSON.parse(raw));
     } catch {
       return {};
     }
@@ -119,6 +117,63 @@
     return sanitize({ ...base, ...overlay });
   }
 
+  function uniquePush(parts, value) {
+    if (!value) return parts;
+    if (parts[parts.length - 1] === value) return parts;
+    parts.push(value);
+    return parts;
+  }
+
+  function buildJornada(base, nextCampanha) {
+    const parts = base.jornada
+      ? base.jornada.split("|").map((part) => part.trim()).filter(Boolean)
+      : [];
+
+    if (!parts.length) {
+      uniquePush(parts, base.origem);
+      uniquePush(parts, base.canal);
+      uniquePush(parts, base.campanha);
+    }
+
+    uniquePush(parts, nextCampanha);
+    return parts.join("|");
+  }
+
+  function stackCampaignHistory(base, nextCampanha) {
+    const parts = [];
+    if (base.campanha) {
+      base.campanha.split("|").forEach((part) => uniquePush(parts, part.trim()));
+    }
+    uniquePush(parts, nextCampanha);
+    return parts.join("|");
+  }
+
+  /**
+   * Aplica override de banner sem perder a origem (utm_source) da links page.
+   * Empilha campanha/jornada para reconstruir o caminho do lead.
+   */
+  function applyBannerOverrides(base, overlay = {}) {
+    const next = { ...base };
+
+    if (overlay.origem) next.origem = overlay.origem;
+    if (overlay.canal) next.canal = overlay.canal;
+
+    if (overlay.campanha) {
+      next.jornada = buildJornada(base, overlay.campanha);
+      next.campanha = stackCampaignHistory(base, overlay.campanha);
+    } else if (overlay.jornada) {
+      next.jornada = overlay.jornada;
+    }
+
+    if (!next.jornada) {
+      next.jornada = [next.origem, next.canal, next.campanha]
+        .filter(Boolean)
+        .join("|");
+    }
+
+    return sanitize(next);
+  }
+
   let state = {};
 
   function captureFromEnvironment(overrides = {}) {
@@ -129,6 +184,13 @@
       mergeTracking(mergeTracking(fromCookie, fromSession), fromUrl),
       overrides
     );
+
+    if (!state.jornada && (state.origem || state.canal || state.campanha)) {
+      state.jornada = [state.origem, state.canal, state.campanha]
+        .filter(Boolean)
+        .join("|");
+    }
+
     return writeStorage(state);
   }
 
@@ -137,22 +199,46 @@
   }
 
   function set(partial) {
-    state = mergeTracking(state, partial);
+    state = applyBannerOverrides(state, sanitize(partial));
     return writeStorage(state);
   }
 
+  function latestCampaign(campanha) {
+    if (!campanha) return "";
+    const parts = campanha.split("|").map((part) => part.trim()).filter(Boolean);
+    return parts[parts.length - 1] || "";
+  }
+
   function toQueryString(overrides = {}) {
-    const data = mergeTracking(state, overrides);
+    const data = applyBannerOverrides(state, sanitize(overrides));
     const params = new URLSearchParams();
-    for (const key of KEYS) {
-      if (data[key]) params.set(key, data[key]);
-    }
+    writeParams(params, data);
     return params.toString();
   }
 
+  function writeParams(params, data) {
+    const origem = data.origem || "";
+    const canal = data.canal || "";
+    const campanhaStack = data.campanha || "";
+    const campanhaAtual = latestCampaign(campanhaStack);
+    const jornada = data.jornada || "";
+
+    // CRM / padrão WeSell — campanha atual (último passo)
+    if (origem) params.set("origem", origem);
+    if (canal) params.set("canal", canal);
+    if (campanhaAtual) params.set("campanha", campanhaAtual);
+    if (jornada) params.set("jornada", jornada);
+
+    // Aliases UTM — source herdado; campaign empilhado; channel herdado
+    if (origem) params.set("utm_source", origem);
+    if (canal) params.set("utm_channel", canal);
+    if (campanhaStack) params.set("utm_campaign", campanhaStack);
+    if (jornada) params.set("utm_content", jornada);
+  }
+
   function appendToUrl(url, overrides = {}) {
-    const data = mergeTracking(state, overrides);
-    if (!KEYS.some((key) => data[key])) return String(url);
+    const data = applyBannerOverrides(state, sanitize(overrides));
+    if (!CRM_KEYS.some((key) => data[key]) && !data.jornada) return String(url);
 
     let parsed;
     try {
@@ -161,7 +247,6 @@
       return String(url);
     }
 
-    // wa.me / api.whatsapp.com: UTMs na query não ajudam o CRM; anexa no texto
     if (
       parsed.hostname === "wa.me" ||
       parsed.hostname === "api.whatsapp.com"
@@ -169,26 +254,36 @@
       return appendToWhatsApp(parsed, data);
     }
 
-    for (const key of KEYS) {
-      if (data[key]) parsed.searchParams.set(key, data[key]);
-    }
+    writeParams(parsed.searchParams, data);
     return parsed.toString();
   }
 
   function appendToWhatsApp(parsed, data) {
-    const bits = KEYS.filter((key) => data[key]).map(
-      (key) => `${key}:${data[key]}`
-    );
+    const origem = data.origem || "";
+    const canal = data.canal || "";
+    const campanha = data.campanha || "";
+    const jornada = data.jornada || "";
+
+    const bits = [
+      origem && `utm_source:${origem}`,
+      canal && `utm_channel:${canal}`,
+      campanha && `utm_campaign:${campanha}`,
+      jornada && `jornada:${jornada}`,
+    ].filter(Boolean);
+
     if (!bits.length) return parsed.toString();
 
     const marker = bits.join(" | ");
     const current = parsed.searchParams.get("text") || "";
-    if (current.includes("origem:") || current.includes("canal:")) {
+    if (
+      current.includes("utm_source:") ||
+      current.includes("origem:") ||
+      current.includes("jornada:")
+    ) {
       return parsed.toString();
     }
-    const next = current
-      ? `${current}\n\n[${marker}]`
-      : `[${marker}]`;
+
+    const next = current ? `${current}\n\n[${marker}]` : `[${marker}]`;
     parsed.searchParams.set("text", next);
     return parsed.toString();
   }
@@ -220,7 +315,7 @@
 
   function overridesFromElement(element) {
     const overrides = {};
-    for (const key of KEYS) {
+    for (const key of CRM_KEYS) {
       const value = (element.getAttribute(`data-${key}`) || "").trim();
       if (value) overrides[key] = value;
     }
@@ -241,29 +336,43 @@
       const overrides = overridesFromElement(anchor);
       anchor.href = appendToUrl(original, overrides);
 
-      // Clique: reaplica (caso o href tenha sido alterado depois do init)
       if (!anchor.dataset.utmBound) {
         anchor.dataset.utmBound = "1";
-        anchor.addEventListener("click", () => {
-          const base = anchor.getAttribute("data-utm-href") || original;
-          anchor.href = appendToUrl(base, overridesFromElement(anchor));
-        });
         anchor.setAttribute("data-utm-href", original);
+        anchor.addEventListener("click", () => {
+          const clickOverrides = overridesFromElement(anchor);
+          // Persiste o empilhamento antes de sair da página
+          if (clickOverrides.campanha) {
+            set({ campanha: clickOverrides.campanha });
+          }
+          const base = anchor.getAttribute("data-utm-href") || original;
+          anchor.href = appendToUrl(base, clickOverrides);
+        });
       }
     });
   }
 
   function fillForms(root = document) {
     const data = get();
-    KEYS.forEach((key) => {
-      if (!data[key]) return;
+    const latest = latestCampaign(data.campanha);
+    const values = {
+      ...data,
+      campanha: latest,
+      utm_source: data.origem || "",
+      utm_channel: data.canal || "",
+      utm_campaign: data.campanha || "",
+      utm_content: data.jornada || "",
+    };
+
+    Object.entries(values).forEach(([key, value]) => {
+      if (!value) return;
       root.querySelectorAll(`[name="${key}"]`).forEach((el) => {
         if (
           el instanceof HTMLInputElement ||
           el instanceof HTMLSelectElement ||
           el instanceof HTMLTextAreaElement
         ) {
-          el.value = data[key];
+          el.value = value;
         }
       });
     });

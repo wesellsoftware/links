@@ -49,16 +49,21 @@
   function getTrackingParams() {
     const fromUtm = window.WeSellUtm ? window.WeSellUtm.get() : {};
     const params = new URLSearchParams(window.location.search);
+    const campanha = fromUtm.campanha || "";
+    const campanhaAtual = campanha.includes("|")
+      ? campanha.split("|").filter(Boolean).pop()
+      : campanha;
 
     return {
-      origem: fromUtm.origem || "",
-      canal: fromUtm.canal || "",
-      campanha: fromUtm.campanha || "",
-      // compatibilidade com payloads antigos
+      origem: fromUtm.origem || params.get("origem") || params.get("utm_source") || "",
+      canal: fromUtm.canal || params.get("canal") || params.get("utm_channel") || params.get("utm_medium") || "",
+      campanha: campanhaAtual || params.get("campanha") || params.get("utm_campaign") || "",
+      jornada: fromUtm.jornada || params.get("jornada") || params.get("utm_content") || "",
       utm_source: params.get("utm_source") || fromUtm.origem || "",
-      utm_medium: params.get("utm_medium") || fromUtm.canal || "",
+      utm_channel: params.get("utm_channel") || params.get("utm_medium") || fromUtm.canal || "",
       utm_campaign: params.get("utm_campaign") || fromUtm.campanha || "",
-      utm_content: params.get("utm_content") || "",
+      utm_content: params.get("utm_content") || fromUtm.jornada || "",
+      utm_medium: params.get("utm_medium") || fromUtm.canal || "",
     };
   }
 
@@ -124,6 +129,10 @@
   }
 
   function trackWaitlistSubmit({ name, email, phone }) {
+    if (window.WeSellUtm) {
+      window.WeSellUtm.set({ campanha: "wesell-education" });
+    }
+
     sendWebhook(WAITLIST_WEBHOOK_URL, {
       name,
       email,
@@ -131,6 +140,7 @@
       tags: [],
       remove_tags: [],
       ...getTrackingParams(),
+      campanha: "wesell-education",
     });
   }
 
